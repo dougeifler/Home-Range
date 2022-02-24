@@ -1,0 +1,66 @@
+---
+title: "TX2021_HR"
+author: "Kaera Utusmi"
+date: "June 15, 2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+library(vcd)
+library(Hmisc)
+library(adehabitatHR)
+library(readxl)
+library(rgdal)
+library(move)
+library(mapview)
+
+setwd("C:/Users/Kaera/Documents/Research/Texas 2021")
+
+TXHROBS <- read_excel("A_inornatusHR.xlsx")
+```
+
+###Calculate minimum convex polygons for adults. First we put the x and why coordinates in a matrix, then make a data frame from the observation numbers, the combine x and y as bundled coordinates. **The units produced are equivalent square meters.  Normally I would convert the x,y coordiinates to meters (instead of cm), but the relationship between m/ha and cm/m2 is the same.
+
+```{r}
+TXxy<-matrix(cbind(TXHROBS$x,TXHROBS$y), ncol=2)
+
+TXsp<-data.frame(TXHROBS$id)
+coordinates(TXsp)<-TXxy
+TXmcp<-mcp.area(TXsp[,"TXHROBS.id"], percent=c(50,95,99), plotit=FALSE)
+TXmcp<- as.data.frame(TXmcp)
+TXmcp<- t(TXmcp)
+head(TXmcp)
+
+```
+
+## #Homrange estimation using the kernal method  Two slightly different ways to get the hr calculated (see package vignette p 27) but they give basically the same values.
+
+
+```{r}
+TXud<-kernelUD(TXsp[,"TXHROBS.id"],h="href", grid=100, extent=1.5)
+image(TXud)
+
+ext<-extent(TXxy) # extent() returns the extent/dimensions of a raster or Spatial object
+multiplyers <- c((ext[2]-ext[1])*0.3, (ext[4]-ext[3])*0.3) # (the max - min)*0.3
+ext <- extend(ext, multiplyers) # extends the raster specified 1st, by the next specified object
+grd <- raster(ext) #makes object into a raster
+res(grd) <- 50 #sets the cell size to 50m
+rm(multiplyers, ext) #removes the specified objects from the R memory
+TXud<-kernelUD(TXsp[,"TXHROBS.id"],h="href",grid=as(grd,"SpatialPixels"), kern = "bivnorm")
+#image(orud)    #vector is too large to visualize
+aa<-kernel.area(TXud,percent=c(50,95))
+aa<- t(aa)
+aa
+
+hrTXud<-getverticeshr(TXud)
+hrTXud<- as.data.frame(hrTXud)
+
+saveFile<- cbind(TXmcp, aa, hrTXud)
+saveFile<- saveFile[c(-6)]
+ 
+names<- c("MCP_50", "MCP_95", "MCP_99", "UD_50", "UD_95", "Total Area")
+colnames(saveFile)<- names
+write.csv(saveFile, file = "TXHR_Results.csv", col.names = T)
+```
